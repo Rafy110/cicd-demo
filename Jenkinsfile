@@ -1,42 +1,48 @@
 pipeline {
   agent {
     kubernetes {
-      label "kaniko-agent"
+      label "docker-agent"
       yaml """
 apiVersion: v1
 kind: Pod
 spec:
   serviceAccountName: jenkins
   containers:
-  - name: kaniko
-    image: gcr.io/kaniko-project/executor:latest
+  - name: docker
+    image: docker:24.0.7-dind
+    securityContext:
+      privileged: true
     command:
-    - /busybox/sleep
+    - dockerd-entrypoint.sh
     args:
-    - "9999"
+    - --host=tcp://0.0.0.0:2375
+    - --host=unix:///var/run/docker.sock
     volumeMounts:
-    - name: docker-config
-      mountPath: /kaniko/.docker
-  - name: kubectl
-    image: bitnami/kubectl:latest
+    - mountPath: /certs/client
+      name: docker-certs
+  - name: docker-cli
+    image: docker:24.0.7-cli
     command:
     - sleep
     args:
     - "9999"
+    volumeMounts:
+    - mountPath: /certs/client
+      name: docker-certs
   volumes:
-  - name: docker-config
-    secret:
-      secretName: regcred
+  - name: docker-certs
+    emptyDir: {}
 """
     }
   }
 
   environment {
+    DOCKER_HOST = "tcp://localhost:2375"
     IMAGE_NAME = "rafikhan110/cicd-demo:latest"
   }
 
   stages {
-    stage('Checkout Code') {
+    stage('Checkout') {
       steps {
         git branch: 'main',
             url: 'https://github.com/Rafy110/cicd-demo.git',
@@ -44,28 +50,37 @@ spec:
       }
     }
 
-    stage('Build and Push Image with Kaniko') {
+    stage('Build Docker Image') {
       steps {
-        container('kaniko') {
+        container('docker-cli') {
           sh """
-            /kaniko/executor \
-              --context `pwd` \
-              --dockerfile `pwd`/Dockerfile \
-              --destination=${IMAGE_NAME} \
-              --cleanup
+            docker build -t ${IMAGE_NAME} ./backend
+            docker build -t rafikhan110/frontend-demo:latest ./frontend
           """
+        }
+      }
+    }
+
+    stage('Push to Docker Hub') {
+      steps {
+        container('docker-cli') {
+          withCredentials([usernamePassword(credentialsId: 'dockerhub-cred', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+            sh """
+              echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
+              docker push ${IMAGE_NAME}
+              docker push rafikhan110/frontend-demo:latest
+            """
+          }
         }
       }
     }
 
     stage('Deploy to Minikube') {
       steps {
-        container('kubectl') {
-          sh """
-            kubectl apply -f k8s/deployment.yaml
-            kubectl rollout status deployment/cicd-demo
-          """
-        }
+        sh """
+          kubectl apply -f k8s/deployment.yaml
+          kubectl rollout status deployment/cicd-demo
+        """
       }
     }
   }
