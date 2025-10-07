@@ -10,10 +10,7 @@ spec:
   containers:
   - name: kaniko
     image: gcr.io/kaniko-project/executor:latest
-    command:
-    - /busybox/sh
-    - -c
-    - cat
+    args: ["--help"]   # keep container valid until Jenkins runs steps
     tty: true
     volumeMounts:
     - name: docker-config
@@ -23,7 +20,7 @@ spec:
     command:
     - sh
     - -c
-    - cat
+    - sleep 9999
     tty: true
   volumes:
   - name: docker-config
@@ -33,7 +30,7 @@ spec:
     }
   }
   stages {
-    stage('Build Image with Kaniko') {
+    stage('Build Docker Image with Kaniko') {
       steps {
         container('kaniko') {
           sh '''
