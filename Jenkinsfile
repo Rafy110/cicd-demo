@@ -1,33 +1,34 @@
 pipeline {
-  agent {
-    kubernetes {
-      label "kaniko-agent"
-      yaml """
+agent {
+  kubernetes {
+    label "kaniko-agent"
+    yaml """
 apiVersion: v1
 kind: Pod
 spec:
-  serviceAccountName: jenkins            # use the jenkins SA (must have pod/create permissions)
+  serviceAccountName: jenkins
   containers:
   - name: kaniko
     image: gcr.io/kaniko-project/executor:latest
-    command: ["/busybox/sh","-c"]
-    args: ["cat"]
+    command:
+    - cat
     tty: true
     volumeMounts:
     - name: kaniko-secret
       mountPath: /kaniko/.docker
   - name: kubectl
-    image: bitnami/kubectl:1.27
-    command: ["/busybox/sh","-c"]
-    args: ["cat"]
+    image: bitnami/kubectl:latest
+    command:
+    - cat
     tty: true
   volumes:
   - name: kaniko-secret
     secret:
       secretName: regcred
 """
-    }
   }
+}
+
 
   stages {
     stage('Prepare') {
