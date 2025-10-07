@@ -13,12 +13,14 @@ spec:
   serviceAccountName: jenkins
   containers:
   - name: jnlp
-    image: jenkins/inbound-agent:4.11.2
+    image: jenkins/inbound-agent:latest
     args: ['\$(JENKINS_SECRET)', '\$(JENKINS_NAME)']
   - name: kaniko
-    image: gcr.io/kaniko-project/executor:latest
+    image: gcr.io/kaniko-project/executor:debug
     command:
-      - cat
+      - /busybox/sh
+      - -c
+      - "sleep 3600"
     tty: true
     volumeMounts:
     - name: kaniko-secret
@@ -44,7 +46,7 @@ spec:
       }
     }
 
-    stage('Build with Kaniko') {
+    stage('Build & Push with Kaniko') {
       steps {
         container('kaniko') {
           sh '''
@@ -60,4 +62,3 @@ spec:
     }
   }
 }
-// vvdfgfdhdg
