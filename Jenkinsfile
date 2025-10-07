@@ -10,7 +10,7 @@ pipeline {
         stage('Checkout Code') {
             steps {
                 echo '📥 Cloning repository...'
-                git branch: 'main', url: 'https://github.com/Rafy110/ci-cd-demo.git'
+                git branch: 'main', url: 'https://github.com/Rafy110/cicd-demo.git'
             }
         }
 
