@@ -1,47 +1,97 @@
 pipeline {
-    agent any
+  agent {
+    kubernetes {
+      label "kaniko-agent"
+      yaml """
+apiVersion: v1
+kind: Pod
+spec:
+  serviceAccountName: jenkins            # use the jenkins SA (must have pod/create permissions)
+  containers:
+  - name: kaniko
+    image: gcr.io/kaniko-project/executor:latest
+    command: ["/busybox/sh","-c"]
+    args: ["cat"]
+    tty: true
+    volumeMounts:
+    - name: kaniko-secret
+      mountPath: /kaniko/.docker
+  - name: kubectl
+    image: bitnami/kubectl:1.27
+    command: ["/busybox/sh","-c"]
+    args: ["cat"]
+    tty: true
+  volumes:
+  - name: kaniko-secret
+    secret:
+      secretName: regcred
+"""
+    }
+  }
 
-    environment {
-        DOCKERHUB_CREDENTIALS = credentials('dockerhub')   // Jenkins credentials ID
-        DOCKERHUB_USER = 'rafikhan110'                     // 👈 replace with your DockerHub username
+  stages {
+    stage('Prepare') {
+      steps {
+        script {
+          // immutable tag per build
+          env.IMG_TAG = "build-${env.BUILD_NUMBER}"
+          echo "Image tag will be: ${env.IMG_TAG}"
+        }
+      }
     }
 
-    stages {
-        stage('Checkout Code') {
-            steps {
-                echo '📥 Cloning repository...'
-                git branch: 'main', url: 'https://github.com/Rafy110/cicd-demo.git'
-            }
+    stage('Build & Push: Backend') {
+      steps {
+        container('kaniko') {
+          sh """
+            /kaniko/executor \
+              --context ${WORKSPACE}/backend \
+              --dockerfile ${WORKSPACE}/backend/Dockerfile \
+              --destination=rafikhan110/backend-demo:${IMG_TAG} \
+              --cache=true
+          """
         }
-
-        stage('Build Backend Image') {
-            steps {
-                echo '🐳 Building backend image...'
-                sh 'docker build -t $DOCKERHUB_USER/backend-demo:latest ./backend'
-            }
-        }
-
-        stage('Build Frontend Image') {
-            steps {
-                echo '🐳 Building frontend image...'
-                sh 'docker build -t $DOCKERHUB_USER/frontend-demo:latest ./frontend'
-            }
-        }
-
-        stage('Push Images') {
-            steps {
-                echo '🚀 Pushing images to DockerHub...'
-                sh 'echo $DOCKERHUB_CREDENTIALS_PSW | docker login -u $DOCKERHUB_CREDENTIALS_USR --password-stdin'
-                sh 'docker push $DOCKERHUB_USER/backend-demo:latest'
-                sh 'docker push $DOCKERHUB_USER/frontend-demo:latest'
-            }
-        }
-
-        stage('Deploy to Kubernetes') {
-            steps {
-                echo '⚡ Deploying to Kubernetes...'
-                sh 'kubectl apply -f k8s/ -n jenkins'
-            }
-        }
+      }
     }
+
+    stage('Build & Push: Frontend') {
+      steps {
+        container('kaniko') {
+          sh """
+            /kaniko/executor \
+              --context ${WORKSPACE}/frontend \
+              --dockerfile ${WORKSPACE}/frontend/Dockerfile \
+              --destination=rafikhan110/frontend-demo:${IMG_TAG} \
+              --cache=true
+          """
+        }
+      }
+    }
+
+    stage('Deploy to Kubernetes') {
+      steps {
+        container('kubectl') {
+          // Ensure manifests exist (create/update)
+          sh "kubectl apply -f k8s/ -n jenkins"
+
+          // Update deployments to the images we just pushed
+          sh "kubectl set image deployment/backend-deployment backend=rafikhan110/backend-demo:${IMG_TAG} -n jenkins"
+          sh "kubectl set image deployment/frontend-deployment frontend=rafikhan110/frontend-demo:${IMG_TAG} -n jenkins"
+
+          // Wait for rollouts
+          sh "kubectl rollout status deployment/backend-deployment -n jenkins --timeout=120s"
+          sh "kubectl rollout status deployment/frontend-deployment -n jenkins --timeout=120s"
+        }
+      }
+    }
+  }
+
+  post {
+    failure {
+      echo "Pipeline failed — check console output"
+    }
+    success {
+      echo "Pipeline succeeded — deployed tag ${IMG_TAG}"
+    }
+  }
 }
