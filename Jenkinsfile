@@ -18,9 +18,8 @@ spec:
   - name: kaniko
     image: gcr.io/kaniko-project/executor:debug
     command:
-      - /busybox/sh
-      - -c
-      - "sleep 3600"
+      - sleep
+      - "3600"
     tty: true
     volumeMounts:
     - name: kaniko-secret
@@ -51,12 +50,10 @@ spec:
       steps {
         container('kaniko') {
           sh '''
-            echo "🔹 Building & Pushing Backend..."
             /kaniko/executor \
               --context=${WORKSPACE}/backend \
               --dockerfile=${WORKSPACE}/backend/Dockerfile \
               --destination=${REGISTRY}/${BACKEND_IMAGE}:${TAG} \
-              --insecure \
               --skip-tls-verify
           '''
         }
@@ -67,12 +64,10 @@ spec:
       steps {
         container('kaniko') {
           sh '''
-            echo "🔹 Building & Pushing Frontend..."
             /kaniko/executor \
               --context=${WORKSPACE}/frontend \
               --dockerfile=${WORKSPACE}/frontend/Dockerfile \
               --destination=${REGISTRY}/${FRONTEND_IMAGE}:${TAG} \
-              --insecure \
               --skip-tls-verify
           '''
         }
@@ -83,23 +78,11 @@ spec:
       steps {
         container('jnlp') {
           sh '''
-            echo "🚀 Deploying to Kubernetes..."
             kubectl apply -f k8s/backend-deployment.yaml
             kubectl apply -f k8s/frontend-deployment.yaml
-            kubectl rollout status deployment backend-deployment
-            kubectl rollout status deployment frontend-deployment
           '''
         }
       }
-    }
-  }
-
-  post {
-    success {
-      echo '✅ Pipeline completed successfully!'
-    }
-    failure {
-      echo '❌ Pipeline failed.'
     }
   }
 }
