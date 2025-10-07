@@ -10,7 +10,8 @@ spec:
   containers:
   - name: kaniko
     image: gcr.io/kaniko-project/executor:latest
-    args: ["--help"]   # keep container valid until Jenkins runs steps
+    command:
+    - cat
     tty: true
     volumeMounts:
     - name: docker-config
@@ -29,16 +30,29 @@ spec:
 """
     }
   }
+
+  environment {
+    IMAGE_NAME = "rafy110/cicd-demo:latest"
+  }
+
   stages {
-    stage('Build Docker Image with Kaniko') {
+    stage('Checkout Code') {
+      steps {
+        git branch: 'main', 
+            url: 'https://github.com/Rafy110/cicd-demo.git',
+            credentialsId: 'github-cred'
+      }
+    }
+
+    stage('Build and Push Image with Kaniko') {
       steps {
         container('kaniko') {
-          sh '''
+          sh """
             /kaniko/executor \
               --context `pwd` \
               --dockerfile `pwd`/Dockerfile \
-              --destination=rafy110/cicd-demo:latest
-          '''
+              --destination=${IMAGE_NAME}
+          """
         }
       }
     }
@@ -46,10 +60,10 @@ spec:
     stage('Deploy to Minikube') {
       steps {
         container('kubectl') {
-          sh '''
+          sh """
             kubectl apply -f k8s/deployment.yaml
             kubectl rollout status deployment/cicd-demo
-          '''
+          """
         }
       }
     }
