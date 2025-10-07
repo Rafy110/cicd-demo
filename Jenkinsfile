@@ -1,82 +1,96 @@
 pipeline {
-    agent {
-        kubernetes {
-            label 'kaniko-agent'
-            defaultContainer 'jnlp'
-            yaml """
+  agent {
+    kubernetes {
+      label 'kaniko-agent'
+      defaultContainer 'jnlp'
+      yaml """
 apiVersion: v1
 kind: Pod
 metadata:
   labels:
-    some-label: kaniko-agent
+    app: jenkins-kaniko
 spec:
+  serviceAccountName: jenkins
   containers:
+  - name: jnlp
+    image: jenkins/inbound-agent:latest
+    args: ['\$(JENKINS_SECRET)', '\$(JENKINS_NAME)']
   - name: kaniko
-    image: gcr.io/kaniko-project/executor:latest
+    image: gcr.io/kaniko-project/executor:debug
     command:
-      - cat
+      - /busybox/sh
+      - -c
+      - "sleep 3600"
     tty: true
     volumeMounts:
-      - name: kaniko-secret
-        mountPath: /kaniko/.docker
+    - name: kaniko-secret
+      mountPath: /kaniko/.docker/
   volumes:
   - name: kaniko-secret
     secret:
-      secretName: dockerhub-secret
+      secretName: regcred
 """
-        }
+    }
+  }
+
+  environment {
+    REGISTRY = "docker.io"
+    BACKEND_IMAGE = "rafy110/backend-demo"
+    FRONTEND_IMAGE = "rafy110/frontend-demo"
+    TAG = "latest"
+  }
+
+  stages {
+
+    stage('Checkout') {
+      steps {
+        checkout scm
+      }
     }
 
-    environment {
-        DOCKERHUB_CREDENTIALS = credentials('dockerhub-cred')
-        IMAGE_NAME = "rafikhan110/backend-demo:latest"
-        CONTEXT_DIR = "${WORKSPACE}/backend"
-        K8S_MANIFEST_DIR = "${WORKSPACE}/k8s"
+    stage('Build & Push Backend') {
+      steps {
+        container('kaniko') {
+          sh '''
+            echo "🐳 Building backend image..."
+            /kaniko/executor \
+              --context=${WORKSPACE}/backend \
+              --dockerfile=${WORKSPACE}/backend/Dockerfile \
+              --destination=$REGISTRY/$BACKEND_IMAGE:$TAG \
+              --insecure \
+              --skip-tls-verify
+          '''
+        }
+      }
     }
 
-    stages {
-        stage('Checkout Code') {
-            steps {
-                echo "📥 Cloning repository..."
-                checkout scm
-            }
+    stage('Build & Push Frontend') {
+      steps {
+        container('kaniko') {
+          sh '''
+            echo "🐳 Building frontend image..."
+            /kaniko/executor \
+              --context=${WORKSPACE}/frontend \
+              --dockerfile=${WORKSPACE}/frontend/Dockerfile \
+              --destination=$REGISTRY/$FRONTEND_IMAGE:$TAG \
+              --insecure \
+              --skip-tls-verify
+          '''
         }
-
-        stage('Build & Push Docker Image') {
-            steps {
-                container('kaniko') {
-                    echo "🐳 Building & Pushing Docker image with Kaniko..."
-                    sh """
-                    /kaniko/executor \
-                        --dockerfile=${CONTEXT_DIR}/Dockerfile \
-                        --context=${CONTEXT_DIR} \
-                        --destination=${IMAGE_NAME} \
-                        --insecure \
-                        --skip-tls-verify
-                    """
-                }
-            }
-        }
-
-        stage('Deploy to Kubernetes') {
-            steps {
-                container('jnlp') {
-                    echo "🚀 Deploying to Kubernetes..."
-                    sh """
-                    kubectl apply -f ${K8S_MANIFEST_DIR}/
-                    kubectl rollout status deployment/backend-demo
-                    """
-                }
-            }
-        }
+      }
     }
 
-    post {
-        success {
-            echo "✅ Pipeline completed successfully!"
+    stage('Deploy to Kubernetes') {
+      steps {
+        container('jnlp') {
+          sh '''
+            echo "🚀 Deploying to Kubernetes..."
+            kubectl apply -f k8s/backend-deployment.yaml
+            kubectl apply -f k8s/frontend-deployment.yaml
+          '''
         }
-        failure {
-            echo "❌ Pipeline failed!"
-        }
+      }
     }
+
+  }
 }
