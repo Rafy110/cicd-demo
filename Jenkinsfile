@@ -1,86 +1,61 @@
 pipeline {
   agent {
     kubernetes {
-      label "docker-agent"
+      label 'kaniko-agent'
+      defaultContainer 'jnlp'
       yaml """
 apiVersion: v1
 kind: Pod
+metadata:
+  labels:
+    app: jenkins-kaniko
 spec:
   serviceAccountName: jenkins
   containers:
-  - name: docker
-    image: docker:24.0.7-dind
-    securityContext:
-      privileged: true
+  - name: jnlp
+    image: jenkins/inbound-agent:4.11.2
+    args: ['\$(JENKINS_SECRET)', '\$(JENKINS_NAME)']
+  - name: kaniko
+    image: gcr.io/kaniko-project/executor:latest
     command:
-    - dockerd-entrypoint.sh
-    args:
-    - --host=tcp://0.0.0.0:2375
-    - --host=unix:///var/run/docker.sock
+      - cat
+    tty: true
     volumeMounts:
-    - mountPath: /certs/client
-      name: docker-certs
-  - name: docker-cli
-    image: docker:24.0.7-cli
-    command:
-    - sleep
-    args:
-    - "9999"
-    volumeMounts:
-    - mountPath: /certs/client
-      name: docker-certs
+    - name: kaniko-secret
+      mountPath: /kaniko/.docker/
   volumes:
-  - name: docker-certs
-    emptyDir: {}
+  - name: kaniko-secret
+    secret:
+      secretName: regcred
 """
     }
   }
 
   environment {
-    DOCKER_HOST = "tcp://localhost:2375"
-    IMAGE_NAME = "rafikhan110/cicd-demo:latest"
+    REGISTRY = "docker.io"
+    IMAGE = "rafy110/cicd-demo"
+    TAG = "latest"
   }
 
   stages {
     stage('Checkout') {
       steps {
-        git branch: 'main',
-            url: 'https://github.com/Rafy110/cicd-demo.git',
-            credentialsId: 'github-cred'
+        checkout scm
       }
     }
 
-    stage('Build Docker Image') {
+    stage('Build with Kaniko') {
       steps {
-        container('docker-cli') {
-          sh """
-            docker build -t ${IMAGE_NAME} ./backend
-            docker build -t rafikhan110/frontend-demo:latest ./frontend
-          """
+        container('kaniko') {
+          sh '''
+            /kaniko/executor \
+              --context=${WORKSPACE} \
+              --dockerfile=${WORKSPACE}/Dockerfile \
+              --destination=$REGISTRY/$IMAGE:$TAG \
+              --insecure \
+              --skip-tls-verify
+          '''
         }
-      }
-    }
-
-    stage('Push to Docker Hub') {
-      steps {
-        container('docker-cli') {
-          withCredentials([usernamePassword(credentialsId: 'dockerhub-cred', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
-            sh """
-              echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
-              docker push ${IMAGE_NAME}
-              docker push rafikhan110/frontend-demo:latest
-            """
-          }
-        }
-      }
-    }
-
-    stage('Deploy to Minikube') {
-      steps {
-        sh """
-          kubectl apply -f k8s/deployment.yaml
-          kubectl rollout status deployment/cicd-demo
-        """
       }
     }
   }
