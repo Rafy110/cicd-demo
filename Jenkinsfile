@@ -1,8 +1,8 @@
 pipeline {
-agent {
-  kubernetes {
-    label "kaniko-agent"
-    yaml """
+  agent {
+    kubernetes {
+      label "kaniko-agent"
+      yaml """
 apiVersion: v1
 kind: Pod
 spec:
@@ -11,15 +11,19 @@ spec:
   - name: kaniko
     image: gcr.io/kaniko-project/executor:latest
     command:
-    - cat
+    - /kaniko/executor
+    args:
+    - --help
     tty: true
     volumeMounts:
     - name: kaniko-secret
       mountPath: /kaniko/.docker
   - name: kubectl
-    image: bitnami/kubectl:latest
+    image: bitnami/kubectl:1.27
     command:
-    - cat
+    - sleep
+    args:
+    - "9999"
     tty: true
   volumes:
   - name: kaniko-secret
