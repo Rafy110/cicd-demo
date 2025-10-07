@@ -11,20 +11,18 @@ spec:
   - name: kaniko
     image: gcr.io/kaniko-project/executor:latest
     command:
-    - sh
-    - -c
-    - sleep 9999
-    tty: true
+    - /busybox/sleep
+    args:
+    - "9999"
     volumeMounts:
     - name: docker-config
       mountPath: /kaniko/.docker
   - name: kubectl
     image: bitnami/kubectl:latest
     command:
-    - sh
-    - -c
-    - sleep 9999
-    tty: true
+    - sleep
+    args:
+    - "9999"
   volumes:
   - name: docker-config
     secret:
@@ -34,13 +32,13 @@ spec:
   }
 
   environment {
-    IMAGE_NAME = "rafy110/cicd-demo:latest"
+    IMAGE_NAME = "rafikhan110/cicd-demo:latest"
   }
 
   stages {
     stage('Checkout Code') {
       steps {
-        git branch: 'main', 
+        git branch: 'main',
             url: 'https://github.com/Rafy110/cicd-demo.git',
             credentialsId: 'github-cred'
       }
@@ -53,7 +51,8 @@ spec:
             /kaniko/executor \
               --context `pwd` \
               --dockerfile `pwd`/Dockerfile \
-              --destination=${IMAGE_NAME}
+              --destination=${IMAGE_NAME} \
+              --cleanup
           """
         }
       }
