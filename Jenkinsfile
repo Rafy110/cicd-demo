@@ -11,6 +11,8 @@ spec:
   - name: kaniko
     image: gcr.io/kaniko-project/executor:latest
     command:
+    - /busybox/sh
+    - -c
     - cat
     tty: true
     volumeMounts:
@@ -19,6 +21,8 @@ spec:
   - name: kubectl
     image: bitnami/kubectl:latest
     command:
+    - sh
+    - -c
     - cat
     tty: true
   volumes:
@@ -35,7 +39,7 @@ spec:
           sh '''
             /kaniko/executor \
               --context `pwd` \
-              --dockerfile `pwd`/backend/Dockerfile \
+              --dockerfile `pwd`/Dockerfile \
               --destination=rafy110/cicd-demo:latest
           '''
         }
