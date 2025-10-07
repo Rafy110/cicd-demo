@@ -1,9 +1,9 @@
 pipeline {
-  agent {
-    kubernetes {
-      label 'kaniko-agent'
-      defaultContainer 'jnlp'
-      yaml """
+    agent {
+        kubernetes {
+            label 'kaniko-agent'
+            defaultContainer 'jnlp'
+            yaml """
 apiVersion: v1
 kind: Pod
 metadata:
@@ -18,9 +18,8 @@ spec:
   - name: kaniko
     image: gcr.io/kaniko-project/executor:debug
     command:
-      - /busybox/sh
-      - -c
-      - "sleep 3600"
+      - sleep
+      - "3600"
     tty: true
     volumeMounts:
     - name: kaniko-secret
@@ -30,67 +29,60 @@ spec:
     secret:
       secretName: regcred
 """
-    }
-  }
-
-  environment {
-    REGISTRY = "docker.io"
-    BACKEND_IMAGE = "rafy110/backend-demo"
-    FRONTEND_IMAGE = "rafy110/frontend-demo"
-    TAG = "latest"
-  }
-
-  stages {
-
-    stage('Checkout') {
-      steps {
-        checkout scm
-      }
-    }
-
-    stage('Build & Push Backend') {
-      steps {
-        container('kaniko') {
-          sh '''
-            echo "🐳 Building backend image..."
-            /kaniko/executor \
-              --context=${WORKSPACE}/backend \
-              --dockerfile=${WORKSPACE}/backend/Dockerfile \
-              --destination=$REGISTRY/$BACKEND_IMAGE:$TAG \
-              --insecure \
-              --skip-tls-verify
-          '''
         }
-      }
     }
 
-    stage('Build & Push Frontend') {
-      steps {
-        container('kaniko') {
-          sh '''
-            echo "🐳 Building frontend image..."
-            /kaniko/executor \
-              --context=${WORKSPACE}/frontend \
-              --dockerfile=${WORKSPACE}/frontend/Dockerfile \
-              --destination=$REGISTRY/$FRONTEND_IMAGE:$TAG \
-              --insecure \
-              --skip-tls-verify
-          '''
+    environment {
+        REGISTRY = "docker.io"
+        BACKEND_IMAGE = "rafikhan110/backend-demo"
+        FRONTEND_IMAGE = "rafikhan110/frontend-demo"
+        TAG = "latest"
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
         }
-      }
-    }
 
-    stage('Deploy to Kubernetes') {
-      steps {
-        container('jnlp') {
-          sh '''
-            echo "🚀 Deploying to Kubernetes..."
-            kubectl apply -f k8s/backend-deployment.yaml
-            kubectl apply -f k8s/frontend-deployment.yaml
-          '''
+        stage('Build & Push Backend') {
+            steps {
+                container('kaniko') {
+                    sh """
+                        /kaniko/executor \
+                            --context=\${WORKSPACE}/backend \
+                            --dockerfile=\${WORKSPACE}/backend/Dockerfile \
+                            --destination=\$REGISTRY/\$BACKEND_IMAGE:\$TAG \
+                            --insecure \
+                            --skip-tls-verify
+                    """
+                }
+            }
         }
-      }
-    }
 
-  }
+        stage('Build & Push Frontend') {
+            steps {
+                container('kaniko') {
+                    sh """
+                        /kaniko/executor \
+                            --context=\${WORKSPACE}/frontend \
+                            --dockerfile=\${WORKSPACE}/frontend/Dockerfile \
+                            --destination=\$REGISTRY/\$FRONTEND_IMAGE:\$TAG \
+                            --insecure \
+                            --skip-tls-verify
+                    """
+                }
+            }
+        }
+
+        stage('Deploy to Kubernetes') {
+            steps {
+                sh """
+                    kubectl apply -f k8s/backend-deployment.yaml
+                    kubectl apply -f k8s/frontend-deployment.yaml
+                """
+            }
+        }
+    }
 }
