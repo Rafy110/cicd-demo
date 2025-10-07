@@ -8,54 +8,35 @@ kind: Pod
 spec:
   serviceAccountName: jenkins
   containers:
-    - name: kaniko
-      image: gcr.io/kaniko-project/executor:v1.9.0-debug
-      command: ["cat"]
-      tty: true
-    - name: kubectl
-      image: bitnami/kubectl:1.29
-      command: ["cat"]
-      tty: true
-
+  - name: kaniko
+    image: gcr.io/kaniko-project/executor:latest
+    command:
+    - cat
+    tty: true
+    volumeMounts:
+    - name: docker-config
+      mountPath: /kaniko/.docker
+  - name: kubectl
+    image: bitnami/kubectl:latest
+    command:
+    - cat
+    tty: true
+  volumes:
+  - name: docker-config
+    secret:
+      secretName: regcred
 """
     }
   }
-
-  environment {
-    DOCKERHUB_USER = "rafikhan110"      // your DockerHub username
-    DOCKERHUB_REPO = "cicd-demo"        // repo name
-    BACKEND_IMAGE = "backend"
-    FRONTEND_IMAGE = "frontend"
-  }
-
   stages {
-    stage('Checkout') {
-      steps {
-        checkout scm
-      }
-    }
-
-    stage('Build & Push Backend Image') {
+    stage('Build Image with Kaniko') {
       steps {
         container('kaniko') {
           sh '''
             /kaniko/executor \
-              --context ./backend \
-              --dockerfile ./backend/Dockerfile \
-              --destination=${DOCKERHUB_USER}/${DOCKERHUB_REPO}:${BACKEND_IMAGE}-latest
-          '''
-        }
-      }
-    }
-
-    stage('Build & Push Frontend Image') {
-      steps {
-        container('kaniko') {
-          sh '''
-            /kaniko/executor \
-              --context ./frontend \
-              --dockerfile ./frontend/Dockerfile \
-              --destination=${DOCKERHUB_USER}/${DOCKERHUB_REPO}:${FRONTEND_IMAGE}-latest
+              --context `pwd` \
+              --dockerfile `pwd`/backend/Dockerfile \
+              --destination=rafy110/cicd-demo:latest
           '''
         }
       }
@@ -65,10 +46,8 @@ spec:
       steps {
         container('kubectl') {
           sh '''
-            kubectl apply -f k8s/backend-deployment.yaml
-            kubectl apply -f k8s/frontend-deployment.yaml
-            kubectl rollout status deployment/backend -n default
-            kubectl rollout status deployment/frontend -n default
+            kubectl apply -f k8s/deployment.yaml
+            kubectl rollout status deployment/cicd-demo
           '''
         }
       }
