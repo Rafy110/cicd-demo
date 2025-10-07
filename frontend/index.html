@@ -1,0 +1,19 @@
+<html>
+  <body>
+    <h1>Hello from Frontend 🚀</h1>
+    <p id="backend"></p>
+
+    <script>
+      // ✅ Just call /api (it will go through Nginx proxy)
+      fetch("/api")
+        .then(response => response.json())
+        .then(data => {
+          document.getElementById("backend").innerText = "Backend says: " + data.message;
+        })
+        .catch(err => {
+          document.getElementById("backend").innerText = "Error connecting to backend ❌";
+          console.error(err);
+        });
+    </script>
+  </body>
+</html>
