@@ -9,7 +9,7 @@ spec:
   serviceAccountName: jenkins
   containers:
   - name: kaniko
-    image: gcr.io/kaniko-project/executor:debug
+    image: gcr.io/kaniko-project/executor:latest
     command:
       - /busybox/sh
       - -c
@@ -19,7 +19,7 @@ spec:
       - name: docker-config
         mountPath: /kaniko/.docker
   - name: kubectl
-    image: bitnami/kubectl:latest
+    image: lachlanevenson/k8s-kubectl:v1.27.1
     command:
       - cat
     tty: true
