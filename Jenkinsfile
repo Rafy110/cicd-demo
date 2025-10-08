@@ -40,23 +40,23 @@ spec:
             steps {
                 container('kaniko') {
                     withCredentials([usernamePassword(credentialsId: 'dockerhub', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
-                        sh """
+                        sh '''
                         mkdir -p /root/.docker
-                        echo '{
-                          "auths": {
-                            "https://index.docker.io/v1/": {
-                              "username": "${DOCKER_USER}",
-                              "password": "${DOCKER_PASS}",
-                              "auth": "$(echo -n ${DOCKER_USER}:${DOCKER_PASS} | base64)"
+                        echo "{
+                          \\"auths\\": {
+                            \\"https://index.docker.io/v1/\\": {
+                              \\"username\\": \\"${DOCKER_USER}\\",
+                              \\"password\\": \\"${DOCKER_PASS}\\",
+                              \\"auth\\": \\"$(echo -n ${DOCKER_USER}:${DOCKER_PASS} | base64)\\"
                             }
                           }
-                        }' > /root/.docker/config.json
+                        }" > /root/.docker/config.json
 
                         /kaniko/executor \
-                          --context=\$(pwd)/backend \
-                          --dockerfile=\$(pwd)/backend/Dockerfile \
+                          --context=$(pwd)/backend \
+                          --dockerfile=$(pwd)/backend/Dockerfile \
                           --destination=docker.io/${DOCKER_USER}/backend-demo:latest
-                        """
+                        '''
                     }
                 }
             }
@@ -66,12 +66,12 @@ spec:
             steps {
                 container('kaniko') {
                     withCredentials([usernamePassword(credentialsId: 'dockerhub', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
-                        sh """
+                        sh '''
                         /kaniko/executor \
-                          --context=\$(pwd)/frontend \
-                          --dockerfile=\$(pwd)/frontend/Dockerfile \
+                          --context=$(pwd)/frontend \
+                          --dockerfile=$(pwd)/frontend/Dockerfile \
                           --destination=docker.io/${DOCKER_USER}/frontend-demo:latest
-                        """
+                        '''
                     }
                 }
             }
@@ -80,7 +80,7 @@ spec:
         stage('Deploy to Kubernetes') {
             steps {
                 container('kaniko') {
-                    sh """
+                    sh '''
                     # Install kubectl inside kaniko container
                     curl -LO "https://dl.k8s.io/release/$(curl -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
                     chmod +x kubectl
@@ -89,7 +89,7 @@ spec:
                     # Apply Kubernetes manifests
                     kubectl apply -f k8s/backend-deployment.yaml
                     kubectl apply -f k8s/frontend-deployment.yaml
-                    """
+                    '''
                 }
             }
         }
