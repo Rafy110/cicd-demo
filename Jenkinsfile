@@ -9,7 +9,7 @@ spec:
   serviceAccountName: jenkins
   containers:
   - name: kaniko
-    image: docker.io/rafikhan110/kaniko-kubectl:latest
+    image: gcr.io/kaniko-project/executor:debug
     command:
       - /busybox/sh
       - -c
@@ -18,9 +18,20 @@ spec:
     volumeMounts:
       - name: docker-config
         mountPath: /kaniko/.docker
+  - name: kubectl
+    image: bitnami/kubectl:latest
+    command:
+      - cat
+    tty: true
+    volumeMounts:
+      - name: kube-config
+        mountPath: /root/.kube
   volumes:
     - name: docker-config
       emptyDir: {}
+    - name: kube-config
+      configMap:
+        name: kube-config
 """
     }
   }
@@ -42,9 +53,7 @@ spec:
     stage('Build & Push Backend') {
       steps {
         container('kaniko') {
-          withCredentials([usernamePassword(credentialsId: 'dockerhub',
-                                           usernameVariable: 'DOCKER_USER',
-                                           passwordVariable: 'DOCKER_PASS')]) {
+          withCredentials([usernamePassword(credentialsId: 'dockerhub', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
             sh '''
               mkdir -p /kaniko/.docker
               AUTH=$(echo -n "$DOCKER_USER:$DOCKER_PASS" | base64 | tr -d '\\n')
@@ -75,9 +84,7 @@ EOF
     stage('Build & Push Frontend') {
       steps {
         container('kaniko') {
-          withCredentials([usernamePassword(credentialsId: 'dockerhub',
-                                           usernameVariable: 'DOCKER_USER',
-                                           passwordVariable: 'DOCKER_PASS')]) {
+          withCredentials([usernamePassword(credentialsId: 'dockerhub', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
             sh '''
               mkdir -p /kaniko/.docker
               AUTH=$(echo -n "$DOCKER_USER:$DOCKER_PASS" | base64 | tr -d '\\n')
@@ -107,7 +114,7 @@ EOF
 
     stage('Deploy to Kubernetes') {
       steps {
-        container('kaniko') {
+        container('kubectl') {
           sh '''
             kubectl apply -f k8s/backend-deployment.yaml
             kubectl apply -f k8s/frontend-deployment.yaml
@@ -117,3 +124,6 @@ EOF
     }
   }
 }
+
+
+// give me proper understanding this file how secret use and others
