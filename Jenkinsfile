@@ -1,126 +1,97 @@
 pipeline {
-  agent {
-    kubernetes {
-      label 'kaniko-agent'
-      yaml """
+    agent {
+        kubernetes {
+            label 'kaniko-agent'
+            yaml """
 apiVersion: v1
 kind: Pod
+metadata:
+  labels:
+    app: jenkins-kaniko
 spec:
-  serviceAccountName: jenkins
   containers:
   - name: kaniko
-    image: gcr.io/kaniko-project/executor:latest
+    image: gcr.io/kaniko-project/executor:debug
     command:
-      - /busybox/sh
-      - -c
-      - sleep 3600
+    - cat
     tty: true
     volumeMounts:
-      - name: docker-config
-        mountPath: /kaniko/.docker
-  - name: kubectl
-    image: lachlanevenson/k8s-kubectl:v1.27.1
-    command:
-      - cat
-    tty: true
-    volumeMounts:
-      - name: kube-config
-        mountPath: /root/.kube
+    - name: workspace-volume
+      mountPath: /home/jenkins/agent
   volumes:
-    - name: docker-config
-      emptyDir: {}
-    - name: kube-config
-      configMap:
-        name: kube-config
+  - name: workspace-volume
+    emptyDir: {}
 """
-    }
-  }
-
-  environment {
-    REGISTRY = "docker.io/rafikhan110"
-    BACKEND_IMAGE = "backend-demo"
-    FRONTEND_IMAGE = "frontend-demo"
-    TAG = "latest"
-  }
-
-  stages {
-    stage('Checkout') {
-      steps {
-        checkout scm
-      }
-    }
-
-    stage('Build & Push Backend') {
-      steps {
-        container('kaniko') {
-          withCredentials([usernamePassword(credentialsId: 'dockerhub', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
-            sh '''
-              mkdir -p /kaniko/.docker
-              AUTH=$(echo -n "$DOCKER_USER:$DOCKER_PASS" | base64 | tr -d '\\n')
-
-              cat > /kaniko/.docker/config.json <<EOF
-{
-  "auths": {
-    "https://index.docker.io/v1/": {
-      "username": "$DOCKER_USER",
-      "password": "$DOCKER_PASS",
-      "auth": "$AUTH"
-    }
-  }
-}
-EOF
-
-              /kaniko/executor \
-                --context=${WORKSPACE}/backend \
-                --dockerfile=${WORKSPACE}/backend/Dockerfile \
-                --destination=$REGISTRY/$BACKEND_IMAGE:$TAG \
-                --skip-tls-verify
-            '''
-          }
         }
-      }
     }
 
-    stage('Build & Push Frontend') {
-      steps {
-        container('kaniko') {
-          withCredentials([usernamePassword(credentialsId: 'dockerhub', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
-            sh '''
-              mkdir -p /kaniko/.docker
-              AUTH=$(echo -n "$DOCKER_USER:$DOCKER_PASS" | base64 | tr -d '\\n')
-
-              cat > /kaniko/.docker/config.json <<EOF
-{
-  "auths": {
-    "https://index.docker.io/v1/": {
-      "username": "$DOCKER_USER",
-      "password": "$DOCKER_PASS",
-      "auth": "$AUTH"
+    environment {
+        DOCKER_CREDENTIALS = credentials('dockerhub') // Jenkins DockerHub credentials (ID = dockerhub)
     }
-  }
-}
-EOF
 
-              /kaniko/executor \
-                --context=${WORKSPACE}/frontend \
-                --dockerfile=${WORKSPACE}/frontend/Dockerfile \
-                --destination=$REGISTRY/$FRONTEND_IMAGE:$TAG \
-                --skip-tls-verify
-            '''
-          }
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
         }
-      }
-    }
 
-    stage('Deploy to Kubernetes') {
-      steps {
-        container('kubectl') {
-          sh '''
-            kubectl apply -f k8s/backend-deployment.yaml
-            kubectl apply -f k8s/frontend-deployment.yaml
-          '''
+        stage('Build & Push Backend') {
+            steps {
+                container('kaniko') {
+                    withCredentials([usernamePassword(credentialsId: 'dockerhub', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                        sh """
+                        mkdir -p /root/.docker
+                        echo '{
+                          "auths": {
+                            "https://index.docker.io/v1/": {
+                              "username": "${DOCKER_USER}",
+                              "password": "${DOCKER_PASS}",
+                              "auth": "$(echo -n ${DOCKER_USER}:${DOCKER_PASS} | base64)"
+                            }
+                          }
+                        }' > /root/.docker/config.json
+
+                        /kaniko/executor \
+                          --context=\$(pwd)/backend \
+                          --dockerfile=\$(pwd)/backend/Dockerfile \
+                          --destination=docker.io/${DOCKER_USER}/backend-demo:latest
+                        """
+                    }
+                }
+            }
         }
-      }
+
+        stage('Build & Push Frontend') {
+            steps {
+                container('kaniko') {
+                    withCredentials([usernamePassword(credentialsId: 'dockerhub', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                        sh """
+                        /kaniko/executor \
+                          --context=\$(pwd)/frontend \
+                          --dockerfile=\$(pwd)/frontend/Dockerfile \
+                          --destination=docker.io/${DOCKER_USER}/frontend-demo:latest
+                        """
+                    }
+                }
+            }
+        }
+
+        stage('Deploy to Kubernetes') {
+            steps {
+                container('kaniko') {
+                    sh """
+                    # Install kubectl inside kaniko container
+                    curl -LO "https://dl.k8s.io/release/$(curl -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+                    chmod +x kubectl
+                    mv kubectl /usr/local/bin/
+
+                    # Apply Kubernetes manifests
+                    kubectl apply -f k8s/backend-deployment.yaml
+                    kubectl apply -f k8s/frontend-deployment.yaml
+                    """
+                }
+            }
+        }
     }
-  }
 }
