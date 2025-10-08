@@ -9,7 +9,7 @@ spec:
   serviceAccountName: jenkins
   containers:
   - name: kaniko
-    image: gcr.io/kaniko-project/executor:debug
+    image: docker.io/rafikhan110/kaniko-kubectl:latest
     command:
       - /busybox/sh
       - -c
@@ -26,11 +26,10 @@ spec:
   }
 
   environment {
-    REGISTRY       = "docker.io/rafikhan110"
-    BACKEND_IMAGE  = "backend-demo"
+    REGISTRY = "docker.io/rafikhan110"
+    BACKEND_IMAGE = "backend-demo"
     FRONTEND_IMAGE = "frontend-demo"
-    TAG            = "latest"
-    K8S_NAMESPACE  = "default"   // change if needed
+    TAG = "latest"
   }
 
   stages {
@@ -43,7 +42,9 @@ spec:
     stage('Build & Push Backend') {
       steps {
         container('kaniko') {
-          withCredentials([usernamePassword(credentialsId: 'dockerhub', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+          withCredentials([usernamePassword(credentialsId: 'dockerhub',
+                                           usernameVariable: 'DOCKER_USER',
+                                           passwordVariable: 'DOCKER_PASS')]) {
             sh '''
               mkdir -p /kaniko/.docker
               AUTH=$(echo -n "$DOCKER_USER:$DOCKER_PASS" | base64 | tr -d '\\n')
@@ -74,7 +75,9 @@ EOF
     stage('Build & Push Frontend') {
       steps {
         container('kaniko') {
-          withCredentials([usernamePassword(credentialsId: 'dockerhub', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+          withCredentials([usernamePassword(credentialsId: 'dockerhub',
+                                           usernameVariable: 'DOCKER_USER',
+                                           passwordVariable: 'DOCKER_PASS')]) {
             sh '''
               mkdir -p /kaniko/.docker
               AUTH=$(echo -n "$DOCKER_USER:$DOCKER_PASS" | base64 | tr -d '\\n')
@@ -106,29 +109,11 @@ EOF
       steps {
         container('kaniko') {
           sh '''
-            echo "[INFO] Installing kubectl inside Kaniko container..."
-            curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
-            chmod +x kubectl && mv kubectl /usr/local/bin/
-
-            echo "[INFO] Deploying to Kubernetes namespace: $K8S_NAMESPACE"
-            kubectl apply -n $K8S_NAMESPACE -f k8s/backend-deployment.yaml
-            kubectl apply -n $K8S_NAMESPACE -f k8s/frontend-deployment.yaml
-
-            echo "[INFO] Waiting for rollout..."
-            kubectl rollout status -n $K8S_NAMESPACE deployment/backend-deployment --timeout=120s
-            kubectl rollout status -n $K8S_NAMESPACE deployment/frontend-deployment --timeout=120s
+            kubectl apply -f k8s/backend-deployment.yaml
+            kubectl apply -f k8s/frontend-deployment.yaml
           '''
         }
       }
-    }
-  }
-
-  post {
-    success {
-      echo "✅ Pipeline finished successfully!"
-    }
-    failure {
-      echo "❌ Pipeline failed, check logs!"
     }
   }
 }
