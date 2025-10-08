@@ -18,9 +18,20 @@ spec:
     volumeMounts:
       - name: docker-config
         mountPath: /kaniko/.docker
+  - name: kubectl
+    image: bitnami/kubectl:latest
+    command:
+      - cat
+    tty: true
+    volumeMounts:
+      - name: kube-config
+        mountPath: /root/.kube
   volumes:
     - name: docker-config
       emptyDir: {}
+    - name: kube-config
+      configMap:
+        name: kube-config
 """
     }
   }
@@ -45,7 +56,6 @@ spec:
           withCredentials([usernamePassword(credentialsId: 'dockerhub', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
             sh '''
               mkdir -p /kaniko/.docker
-
               AUTH=$(echo -n "$DOCKER_USER:$DOCKER_PASS" | base64 | tr -d '\\n')
 
               cat > /kaniko/.docker/config.json <<EOF
@@ -60,8 +70,6 @@ spec:
 }
 EOF
 
-              cat /kaniko/.docker/config.json
-
               /kaniko/executor \
                 --context=${WORKSPACE}/backend \
                 --dockerfile=${WORKSPACE}/backend/Dockerfile \
@@ -69,6 +77,48 @@ EOF
                 --skip-tls-verify
             '''
           }
+        }
+      }
+    }
+
+    stage('Build & Push Frontend') {
+      steps {
+        container('kaniko') {
+          withCredentials([usernamePassword(credentialsId: 'dockerhub', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+            sh '''
+              mkdir -p /kaniko/.docker
+              AUTH=$(echo -n "$DOCKER_USER:$DOCKER_PASS" | base64 | tr -d '\\n')
+
+              cat > /kaniko/.docker/config.json <<EOF
+{
+  "auths": {
+    "https://index.docker.io/v1/": {
+      "username": "$DOCKER_USER",
+      "password": "$DOCKER_PASS",
+      "auth": "$AUTH"
+    }
+  }
+}
+EOF
+
+              /kaniko/executor \
+                --context=${WORKSPACE}/frontend \
+                --dockerfile=${WORKSPACE}/frontend/Dockerfile \
+                --destination=$REGISTRY/$FRONTEND_IMAGE:$TAG \
+                --skip-tls-verify
+            '''
+          }
+        }
+      }
+    }
+
+    stage('Deploy to Kubernetes') {
+      steps {
+        container('kubectl') {
+          sh '''
+            kubectl apply -f k8s/backend-deployment.yaml
+            kubectl apply -f k8s/frontend-deployment.yaml
+          '''
         }
       }
     }
