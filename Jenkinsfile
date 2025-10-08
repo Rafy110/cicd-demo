@@ -67,8 +67,7 @@ spec:
                           /kaniko/executor \
                             --context=${WORKSPACE}/backend \
                             --dockerfile=${WORKSPACE}/backend/Dockerfile \
-                            --destination=$REGISTRY/$BACKEND_IMAGE:$TAG \
-                            --docker-config=/root/.docker/
+                            --destination=$REGISTRY/$BACKEND_IMAGE:$TAG
                         '''
                     }
                 }
@@ -94,8 +93,7 @@ spec:
                           /kaniko/executor \
                             --context=${WORKSPACE}/frontend \
                             --dockerfile=${WORKSPACE}/frontend/Dockerfile \
-                            --destination=$REGISTRY/$FRONTEND_IMAGE:$TAG \
-                            --docker-config=/root/.docker/
+                            --destination=$REGISTRY/$FRONTEND_IMAGE:$TAG
                         '''
                     }
                 }
