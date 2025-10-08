@@ -18,14 +18,9 @@ spec:
     volumeMounts:
       - name: docker-config
         mountPath: /kaniko/.docker
-      - name: kube-config
-        mountPath: /root/.kube
   volumes:
     - name: docker-config
       emptyDir: {}
-    - name: kube-config
-      configMap:
-        name: kube-config
 """
     }
   }
@@ -50,11 +45,6 @@ spec:
         container('kaniko') {
           withCredentials([usernamePassword(credentialsId: 'dockerhub', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
             sh '''
-              echo "[INFO] Installing kubectl inside Kaniko container..."
-              curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
-              chmod +x kubectl && mv kubectl /usr/local/bin/
-
-              echo "[INFO] Building and pushing backend image..."
               mkdir -p /kaniko/.docker
               AUTH=$(echo -n "$DOCKER_USER:$DOCKER_PASS" | base64 | tr -d '\\n')
 
@@ -86,7 +76,6 @@ EOF
         container('kaniko') {
           withCredentials([usernamePassword(credentialsId: 'dockerhub', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
             sh '''
-              echo "[INFO] Building and pushing frontend image..."
               mkdir -p /kaniko/.docker
               AUTH=$(echo -n "$DOCKER_USER:$DOCKER_PASS" | base64 | tr -d '\\n')
 
@@ -117,6 +106,10 @@ EOF
       steps {
         container('kaniko') {
           sh '''
+            echo "[INFO] Installing kubectl inside Kaniko container..."
+            curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+            chmod +x kubectl && mv kubectl /usr/local/bin/
+
             echo "[INFO] Deploying to Kubernetes namespace: $K8S_NAMESPACE"
             kubectl apply -n $K8S_NAMESPACE -f k8s/backend-deployment.yaml
             kubectl apply -n $K8S_NAMESPACE -f k8s/frontend-deployment.yaml
@@ -124,8 +117,6 @@ EOF
             echo "[INFO] Waiting for rollout..."
             kubectl rollout status -n $K8S_NAMESPACE deployment/backend-deployment --timeout=120s
             kubectl rollout status -n $K8S_NAMESPACE deployment/frontend-deployment --timeout=120s
-
-            echo "[INFO] Deployment successful!"
           '''
         }
       }
